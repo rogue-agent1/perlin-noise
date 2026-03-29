@@ -1,41 +1,48 @@
-#!/usr/bin/env python3
-"""Procedural noise: Perlin, value noise, and Worley."""
-import sys, math, random
+import argparse, math, random
 
-def lerp(a, b, t): return a + t*(b-a)
 def fade(t): return t*t*t*(t*(t*6-15)+10)
+def lerp(a, b, t): return a + t*(b-a)
 
-class PerlinNoise:
-    def __init__(self, seed=42):
-        random.seed(seed)
-        self.p = list(range(256)); random.shuffle(self.p); self.p *= 2
-        self.grads = [(math.cos(a),math.sin(a)) for a in [random.uniform(0,2*math.pi) for _ in range(256)]]
-    def _grad(self, h, x, y):
-        g = self.grads[h & 255]; return g[0]*x + g[1]*y
-    def noise(self, x, y):
-        xi, yi = int(math.floor(x)) & 255, int(math.floor(y)) & 255
-        xf, yf = x - math.floor(x), y - math.floor(y)
-        u, v = fade(xf), fade(yf)
-        aa = self.p[self.p[xi]+yi]; ab = self.p[self.p[xi]+yi+1]
-        ba = self.p[self.p[xi+1]+yi]; bb = self.p[self.p[xi+1]+yi+1]
-        x1 = lerp(self._grad(aa,xf,yf), self._grad(ba,xf-1,yf), u)
-        x2 = lerp(self._grad(ab,xf,yf-1), self._grad(bb,xf-1,yf-1), u)
-        return lerp(x1, x2, v)
-    def fbm(self, x, y, octaves=4, lacunarity=2, gain=0.5):
-        total = 0; amp = 1; freq = 1; max_val = 0
-        for _ in range(octaves):
-            total += self.noise(x*freq, y*freq)*amp
-            max_val += amp; amp *= gain; freq *= lacunarity
-        return total/max_val
+def perlin_2d(width, height, scale=10, octaves=4, seed=None):
+    if seed: random.seed(seed)
+    # Generate gradient grid
+    gw, gh = width//scale+2, height//scale+2
+    grads = [[(random.gauss(0,1), random.gauss(0,1)) for _ in range(gw)] for _ in range(gh)]
+    def dot_grad(ix, iy, x, y):
+        dx, dy = x-ix, y-iy
+        gx, gy = grads[iy % gh][ix % gw]
+        return dx*gx + dy*gy
+    def noise(x, y):
+        x0, y0 = int(x), int(y)
+        x1, y1 = x0+1, y0+1
+        sx, sy = fade(x-x0), fade(y-y0)
+        n0 = lerp(dot_grad(x0,y0,x,y), dot_grad(x1,y0,x,y), sx)
+        n1 = lerp(dot_grad(x0,y1,x,y), dot_grad(x1,y1,x,y), sx)
+        return lerp(n0, n1, sy)
+    grid = [[0.0]*width for _ in range(height)]
+    for o in range(octaves):
+        freq = 2**o
+        amp = 0.5**o
+        for y in range(height):
+            for x in range(width):
+                grid[y][x] += noise(x*freq/scale, y*freq/scale) * amp
+    return grid
 
 def main():
-    pn = PerlinNoise(42); chars = " ·░▒▓█"
-    print("Perlin noise (FBM, 4 octaves):")
-    for y in range(20):
-        row = ""
-        for x in range(60):
-            v = (pn.fbm(x*0.05, y*0.1) + 1) / 2
-            row += chars[min(int(v*6), 5)]
-        print(row)
+    p = argparse.ArgumentParser(description="Perlin noise generator")
+    p.add_argument("-w", "--width", type=int, default=60)
+    p.add_argument("-H", "--height", type=int, default=30)
+    p.add_argument("-s", "--scale", type=int, default=10)
+    p.add_argument("-o", "--octaves", type=int, default=4)
+    p.add_argument("--seed", type=int)
+    args = p.parse_args()
+    grid = perlin_2d(args.width, args.height, args.scale, args.octaves, args.seed)
+    chars = " ·:;+*#%@"
+    mn = min(min(r) for r in grid)
+    mx = max(max(r) for r in grid)
+    rng = mx - mn or 1
+    for row in grid:
+        print("".join(chars[min(int((v-mn)/rng*(len(chars)-1)), len(chars)-1)] for v in row))
 
-if __name__ == "__main__": main()
+if __name__ == "__main__":
+    main()
