@@ -1,31 +1,41 @@
 #!/usr/bin/env python3
-"""noise_gen - Value noise and Perlin-like noise."""
-import sys, math, random, hashlib
-def value_noise_1d(x, seed=0):
-    def hash_int(n):
-        return int(hashlib.md5(f"{n}:{seed}".encode()).hexdigest()[:8],16)/0xFFFFFFFF
-    x0=int(math.floor(x)); x1=x0+1; t=x-x0
-    t=t*t*(3-2*t)  # smoothstep
-    return hash_int(x0)*(1-t)+hash_int(x1)*t
-def value_noise_2d(x, y, seed=0):
-    def hash_2d(ix, iy):
-        return int(hashlib.md5(f"{ix},{iy}:{seed}".encode()).hexdigest()[:8],16)/0xFFFFFFFF
-    x0,y0=int(math.floor(x)),int(math.floor(y)); x1,y1=x0+1,y0+1
-    tx,ty=x-x0,y-y0; tx=tx*tx*(3-2*tx); ty=ty*ty*(3-2*ty)
-    c00,c10,c01,c11=hash_2d(x0,y0),hash_2d(x1,y0),hash_2d(x0,y1),hash_2d(x1,y1)
-    return (c00*(1-tx)+c10*tx)*(1-ty)+(c01*(1-tx)+c11*tx)*ty
-def fbm(x, y, octaves=4, lacunarity=2.0, gain=0.5, seed=0):
-    total=0; amplitude=1; frequency=1; max_val=0
-    for _ in range(octaves):
-        total+=value_noise_2d(x*frequency,y*frequency,seed)*amplitude
-        max_val+=amplitude; amplitude*=gain; frequency*=lacunarity
-    return total/max_val
-if __name__=="__main__":
-    w,h=60,25; scale=float(sys.argv[1]) if len(sys.argv)>1 else 0.1
-    chars=" .:-=+*#%@"
-    for r in range(h):
-        line=""
-        for c in range(w):
-            v=fbm(c*scale,r*scale,octaves=4)
-            line+=chars[int(v*(len(chars)-1))]
-        print(line)
+"""Procedural noise: Perlin, value noise, and Worley."""
+import sys, math, random
+
+def lerp(a, b, t): return a + t*(b-a)
+def fade(t): return t*t*t*(t*(t*6-15)+10)
+
+class PerlinNoise:
+    def __init__(self, seed=42):
+        random.seed(seed)
+        self.p = list(range(256)); random.shuffle(self.p); self.p *= 2
+        self.grads = [(math.cos(a),math.sin(a)) for a in [random.uniform(0,2*math.pi) for _ in range(256)]]
+    def _grad(self, h, x, y):
+        g = self.grads[h & 255]; return g[0]*x + g[1]*y
+    def noise(self, x, y):
+        xi, yi = int(math.floor(x)) & 255, int(math.floor(y)) & 255
+        xf, yf = x - math.floor(x), y - math.floor(y)
+        u, v = fade(xf), fade(yf)
+        aa = self.p[self.p[xi]+yi]; ab = self.p[self.p[xi]+yi+1]
+        ba = self.p[self.p[xi+1]+yi]; bb = self.p[self.p[xi+1]+yi+1]
+        x1 = lerp(self._grad(aa,xf,yf), self._grad(ba,xf-1,yf), u)
+        x2 = lerp(self._grad(ab,xf,yf-1), self._grad(bb,xf-1,yf-1), u)
+        return lerp(x1, x2, v)
+    def fbm(self, x, y, octaves=4, lacunarity=2, gain=0.5):
+        total = 0; amp = 1; freq = 1; max_val = 0
+        for _ in range(octaves):
+            total += self.noise(x*freq, y*freq)*amp
+            max_val += amp; amp *= gain; freq *= lacunarity
+        return total/max_val
+
+def main():
+    pn = PerlinNoise(42); chars = " ·░▒▓█"
+    print("Perlin noise (FBM, 4 octaves):")
+    for y in range(20):
+        row = ""
+        for x in range(60):
+            v = (pn.fbm(x*0.05, y*0.1) + 1) / 2
+            row += chars[min(int(v*6), 5)]
+        print(row)
+
+if __name__ == "__main__": main()

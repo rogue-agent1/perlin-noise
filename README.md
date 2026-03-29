@@ -1,11 +1,9 @@
-# noise-gen
+# Noise Generators (Perlin, Simplex, Worley)
 
-Perlin and value noise generators.
-
-Zero dependencies. Python 3.8+.
+Noise Generators (Perlin, Simplex, Worley) — zero-dependency Python implementation.
 
 ## Usage
 
 ```bash
-python3 noise_gen.py --help
+python3 noise_gen.py
 ```
